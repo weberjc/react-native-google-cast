@@ -45,7 +45,7 @@ public class GoogleCastButtonManager extends SimpleViewManager<MediaRouteButton>
 
     @ReactProp(name = "tintColor", customType = "Color")
     public void setTintColor(ColorableMediaRouteButton button, Integer color) {
-        if (color == null) return;
+        if (color == null || button == null) return;
         button.applyTint(color);
     }
 
@@ -61,6 +61,7 @@ public class GoogleCastButtonManager extends SimpleViewManager<MediaRouteButton>
     // https://stackoverflow.com/a/41496796/384349
     private class ColorableMediaRouteButton extends MediaRouteButton {
         protected Drawable mRemoteIndicatorDrawable;
+        protected Integer tintColorToApply = null;
 
         public ColorableMediaRouteButton(Context context) {
             super(context);
@@ -78,9 +79,16 @@ public class GoogleCastButtonManager extends SimpleViewManager<MediaRouteButton>
         public void setRemoteIndicatorDrawable(Drawable d) {
             mRemoteIndicatorDrawable = d;
             super.setRemoteIndicatorDrawable(d);
+            if (this.tintColorToApply != null) {
+              this.applyTint(tintColorToApply);
+            }
         }
 
         public void applyTint(Integer color) {
+            if(mRemoteIndicatorDrawable == null) {
+              this.tintColorToApply = color;
+              return;
+            }
             Drawable wrapDrawable = DrawableCompat.wrap(mRemoteIndicatorDrawable);
             DrawableCompat.setTint(wrapDrawable, color);
         }
