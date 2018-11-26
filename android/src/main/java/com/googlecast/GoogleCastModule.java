@@ -5,6 +5,7 @@ import android.net.Uri;
 import android.support.annotation.Nullable;
 import android.util.Log;
 
+import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.LifecycleEventListener;
 import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.ReactApplicationContext;
@@ -17,13 +18,19 @@ import com.facebook.react.common.annotations.VisibleForTesting;
 import com.facebook.react.modules.core.DeviceEventManagerModule;
 import com.google.android.gms.cast.MediaInfo;
 import com.google.android.gms.cast.MediaMetadata;
+import com.google.android.gms.cast.Cast;
+import com.google.android.gms.cast.CastDevice;
 import com.google.android.gms.cast.framework.CastContext;
 import com.google.android.gms.cast.framework.CastSession;
 import com.google.android.gms.cast.framework.CastState;
 import com.google.android.gms.cast.framework.SessionManager;
 import com.google.android.gms.cast.framework.SessionManagerListener;
 import com.google.android.gms.cast.framework.media.RemoteMediaClient;
+import com.google.android.gms.common.api.ResultCallback;
+import com.google.android.gms.common.api.Status;
 import com.google.android.gms.common.images.WebImage;
+
+import java.io.IOException;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -48,7 +55,15 @@ public class GoogleCastModule
     protected static final String MEDIA_PLAYBACK_STARTED= "GoogleCast:MediaPlaybackStarted";
     protected static final String MEDIA_PLAYBACK_ENDED = "GoogleCast:MediaPlaybackEnded";
 
+    protected static final String CHANNEL_MESSAGE_RECEIVED = "GoogleCast:ChannelMessageReceived";
+    protected static final String CHANNEL_CONNECTED = "GoogleCast:ChannelConnected";
+    protected static final String CHANNEL_DISCONNECTED = "GoogleCast:ChannelDisconnected";
+
+    protected static final String TAG = "CastModule";
+
     private CastSession mCastSession;
+    private Map<String, Cast.MessageReceivedCallback> channelByNamespace = new HashMap<String, Cast.MessageReceivedCallback>();
+
     private SessionManagerListener<CastSession> mSessionManagerListener;
 
     public GoogleCastModule(ReactApplicationContext reactContext) {
@@ -78,6 +93,10 @@ public class GoogleCastModule
         constants.put("MEDIA_STATUS_UPDATED", MEDIA_STATUS_UPDATED);
         constants.put("MEDIA_PLAYBACK_STARTED", MEDIA_PLAYBACK_STARTED);
         constants.put("MEDIA_PLAYBACK_ENDED", MEDIA_PLAYBACK_ENDED);
+
+        constants.put("CHANNEL_MESSAGE_RECEIVED", CHANNEL_MESSAGE_RECEIVED);
+        constants.put("CHANNEL_CONNECTED", CHANNEL_CONNECTED);
+        constants.put("CHANNEL_DISCONNECTED", CHANNEL_DISCONNECTED);
 
         return constants;
     }
@@ -114,6 +133,81 @@ public class GoogleCastModule
                 remoteMediaClient.load(buildMediaInfo(params), true, seconds * 1000);
 
                 Log.e(REACT_CLASS, "Casting media... ");
+            }
+        });
+    }
+
+    @ReactMethod
+    public void initChannel(final String namespace) {
+        if (mCastSession == null) {
+            return;
+        }
+
+        getReactApplicationContext().runOnUiQueueThread(new Runnable() {
+            @Override
+            public void run() {
+
+                Cast.MessageReceivedCallback messageReceivedCallback = new Cast.MessageReceivedCallback() {
+
+                  public String getNamespace() {
+                    //return namespace
+                    return "urn:x-cast:com.example.custom";
+                  }
+
+                  @Override
+                  public void onMessageReceived(CastDevice castDevice, String namespace,
+                        String message) {
+                    Log.d(TAG, "onMessageReceived: " + message);
+                    WritableMap map = Arguments.createMap();
+                    map.putString("namespace", namespace);
+                    map.putString("message", message);
+                    GoogleCastModule.this.emitMessageToRN(CHANNEL_MESSAGE_RECEIVED, map);
+                  }
+                };
+
+                try {
+                  mCastSession.setMessageReceivedCallbacks(
+                      namespace,
+                      messageReceivedCallback);
+                } catch (IOException e) {
+                  Log.e(TAG, "Exception while creating channel", e);
+                }
+                WritableMap map = Arguments.createMap();
+                map.putString("namespace", namespace);
+                GoogleCastModule.this.emitMessageToRN(CHANNEL_CONNECTED, map);
+            }
+        });
+    }
+
+    @ReactMethod
+    public void sendMessage(final String message, final String namespace) {
+        if (mCastSession == null) {
+            return;
+        }
+        /*Cast.MessageReceivedCallback channel = this.channelByNamespace.get(message);
+
+        if (channel == null) {
+            return;
+        }*/
+
+        getReactApplicationContext().runOnUiQueueThread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    mCastSession.sendMessage(namespace, message)
+                        .setResultCallback(
+                            new ResultCallback<Status>() {
+                                @Override
+                                public void onResult(Status result) {
+
+                                if (!result.isSuccess()) {
+                                    Log.e(TAG, "Sending message failed");
+                                }
+                            }
+                        });
+                } catch (Exception e) {
+                    Log.e(TAG, "Exception while sending message", e);
+                }
             }
         });
     }
